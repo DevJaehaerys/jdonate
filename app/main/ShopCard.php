@@ -16,7 +16,7 @@ class ShopCard
         $html = '';
         foreach ($products as $product) {
             $html .= '<div class="bg-white rounded-lg border p-4">';
-            $html .= '<img src="' . htmlspecialchars($product['image']) . '" alt="' . htmlspecialchars($product['name']) . '" class="w-full h-48 rounded-md object-cover">';
+            $html .= '<img src="' . htmlspecialchars($product['image']) . '" alt="' . htmlspecialchars($product['name']) . '" class="w-full h-auto rounded-md object-cover">';
             $html .= '<div class="px-1 py-4">';
             $html .= '<div class="font-bold text-xl mb-2">' . htmlspecialchars($product['name']) . '</div>';
             $html .= '<p class="text-gray-700 text-base">' . htmlspecialchars($product['descr']) . '</p>';
