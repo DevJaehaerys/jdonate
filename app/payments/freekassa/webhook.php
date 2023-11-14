@@ -8,36 +8,17 @@ if (!in_array($client_ip, $allowed_ips)) {
     exit;
 }
 
-require_once './app/main/config.php';
-
-$dbHost = $dbHost;
-$dbUser = $dbUsername;
-$dbPass = $dbPassword;
-$dbName = $dbName;
-
-$conn = new mysqli($dbHost, $dbUser, $dbPass, $dbName);
-
-if ($conn->connect_error) {
-    die("db error");
-}
-
+require_once __DIR__ . '/../../main/User.php';
+$user = new User();
 $amount = $_POST['AMOUNT'];
 $steamid = $_POST['MERCHANT_ORDER_ID'];
 $newBalance = 0;
+$currentBalance = $user->getUserBalance($steamid);
 
-$sqlSelect = "SELECT balance FROM users WHERE steamid = '$steamid'";
-$result = $conn->query($sqlSelect);
-
-if ($result->num_rows > 0) {
-    $row = $result->fetch_assoc();
-    $currentBalance = $row["balance"];
+if ($currentBalance !== null) {
     $newBalance = $currentBalance + $amount;
-
-    $sqlUpdate = "UPDATE users SET balance = '$newBalance' WHERE steamid = '$steamid'";
-    $conn->query($sqlUpdate);
+    $user->updateBalance($steamid, $newBalance);
 } else {
     echo json_encode(['message' => 'user 404']);
 }
-
-$conn->close();
 ?>
