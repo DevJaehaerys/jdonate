@@ -1,12 +1,61 @@
 <?php
 // https://github.com/DevJaehaerys/jdonate
 require_once 'db.php';
+require_once __DIR__ . '/../main/config.php';
 
 class User {
     private $db;
 
     public function __construct() {
         $this->db = new Database();
+    }
+    public function processCartRequest() {
+        global $whiteListApi, $apiKey;
+
+        if ($_SERVER['REMOTE_ADDR'] !== $whiteListApi) {
+            http_response_code(403);
+            die("Access Denied");
+        }
+
+        if (!isset($_SERVER['HTTP_X_API_KEY']) || $_SERVER['HTTP_X_API_KEY'] !== $apiKey) {
+            http_response_code(401);
+            die("Access Denied");
+        }
+
+        $database = $this->db->getConnection();
+
+        if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['steamid'])) {
+            $steamid = $_GET['steamid'];
+
+            $userCheckQuery = $database->prepare("SELECT * FROM users WHERE steamid = :steamid");
+            $userCheckQuery->bindParam(':steamid', $steamid);
+            $userCheckQuery->execute();
+            $userExists = $userCheckQuery->rowCount() > 0;
+
+            if ($userExists) {
+                $query = $database->prepare("SELECT * FROM cart WHERE steamid = :steamid");
+                $query->bindParam(':steamid', $steamid);
+                $query->execute();
+                $items = $query->fetchAll(PDO::FETCH_ASSOC);
+
+                if (!empty($items)) {
+                    echo json_encode($items);
+                } else {
+                    echo json_encode(['message' => 'Cart empty ']);
+                }
+            } else {
+                echo json_encode(['message' => 'User 404']);
+            }
+        }
+
+
+        if ($_SERVER['REQUEST_METHOD'] === 'DELETE' && isset($_GET['id'])) {
+            $id = $_GET['id'];
+            $query = $database->prepare("DELETE FROM cart WHERE id = :id");
+            $query->bindParam(':id', $id);
+            $query->execute();
+            echo "Item $id deleted.";
+        }
     }
 
     public function checkAuthorization() {
@@ -21,9 +70,10 @@ class User {
         return $row['balance'];
     }
     public function updateBalance($steamid, $newBalance) {
-        $query = "UPDATE users SET balance = ? WHERE steamid = ?";
-        $stmt = $this->conn->prepare($query);
-        $stmt->bind_param("ss", $newBalance, $steamid);
+        $query = "UPDATE users SET balance = :newBalance WHERE steamid = :steamid";
+        $stmt = $this->db->getConnection()->prepare($query);
+        $stmt->bindParam(':newBalance', $newBalance, PDO::PARAM_STR);
+        $stmt->bindParam(':steamid', $steamid, PDO::PARAM_STR);
         return $stmt->execute();
     }
 
