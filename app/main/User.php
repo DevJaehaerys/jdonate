@@ -3,90 +3,163 @@
 require_once 'db.php';
 require_once __DIR__ . '/../main/config.php';
 
-class User {
+class User
+{
     private $db;
 
-    public function __construct() {
+    public function __construct()
+    {
         $this->db = new Database();
     }
-    public function processCartRequest() {
+
+    public function processCartRequest()
+    {
         global $whiteListApi, $apiKey;
 
-        if ($_SERVER['REMOTE_ADDR'] !== $whiteListApi) {
-            http_response_code(403);
-            die("Access Denied");
-        }
-
-        if (!isset($_SERVER['HTTP_X_API_KEY']) || $_SERVER['HTTP_X_API_KEY'] !== $apiKey) {
-            http_response_code(401);
-            die("Access Denied");
-        }
+        $this->checkApiAccess($whiteListApi, $apiKey);
 
         $database = $this->db->getConnection();
 
         if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['steamid'])) {
             $steamid = $_GET['steamid'];
 
-            $userCheckQuery = $database->prepare("SELECT * FROM users WHERE steamid = :steamid");
-            $userCheckQuery->bindParam(':steamid', $steamid);
-            $userCheckQuery->execute();
-            $userExists = $userCheckQuery->rowCount() > 0;
-
-            if ($userExists) {
-                $query = $database->prepare("SELECT * FROM cart WHERE steamid = :steamid");
-                $query->bindParam(':steamid', $steamid);
-                $query->execute();
-                $items = $query->fetchAll(PDO::FETCH_ASSOC);
-
-                if (!empty($items)) {
-                    echo json_encode($items);
-                } else {
-                    echo json_encode(['message' => 'Cart empty ']);
-                }
+            if ($this->userExists($steamid)) {
+                $items = $this->getCartItems($database, $steamid);
+                echo json_encode(!empty($items) ? $items : ['message' => 'Cart empty']);
             } else {
                 echo json_encode(['message' => 'User 404']);
             }
         }
 
-
         if ($_SERVER['REQUEST_METHOD'] === 'DELETE' && isset($_GET['id'])) {
             $id = $_GET['id'];
-            $query = $database->prepare("DELETE FROM cart WHERE id = :id");
-            $query->bindParam(':id', $id);
-            $query->execute();
+            $this->deleteCartItem($database, $id);
             echo "Item $id deleted.";
         }
     }
 
-    public function checkAuthorization() {
+    private function checkApiAccess($whiteListApi, $apiKey)
+    {
+        if ($_SERVER['REMOTE_ADDR'] !== $whiteListApi || !isset($_SERVER['HTTP_X_API_KEY']) || $_SERVER['HTTP_X_API_KEY'] !== $apiKey) {
+            http_response_code(403);
+            die("Access Denied");
+        }
+    }
+
+    private function userExists($steamid)
+    {
+        $query = "SELECT * FROM users WHERE steamid = ?";
+        return $this->executeQuery($query, [$steamid])->rowCount() > 0;
+    }
+
+    private function getCartItems($database, $steamid)
+    {
+        $query = $database->prepare("SELECT * FROM cart WHERE steamid = ?");
+        $query->bindParam(':steamid', $steamid);
+        $query->execute();
+        return $query->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    private function deleteCartItem($database, $id)
+    {
+        $query = $database->prepare("DELETE FROM cart WHERE id = :id");
+        $query->bindParam(':id', $id);
+        $query->execute();
+    }
+
+    public function checkAuthorization()
+    {
         return isset($_SESSION['userData']['name']);
     }
 
-    public function getUserBalance($steamid) {
-        $conn = $this->db->getConnection();
-        $query = "SELECT balance FROM users WHERE steamid = '$steamid'";
-        $result = $conn->query($query);
-        $row = $result->fetch();
-        return $row['balance'];
-    }
-    public function updateBalance($steamid, $newBalance) {
-        $query = "UPDATE users SET balance = :newBalance WHERE steamid = :steamid";
-        $stmt = $this->db->getConnection()->prepare($query);
-        $stmt->bindParam(':newBalance', $newBalance, PDO::PARAM_STR);
-        $stmt->bindParam(':steamid', $steamid, PDO::PARAM_STR);
-        return $stmt->execute();
+    public function getUserBalance($steamid)
+    {
+        $query = "SELECT balance FROM users WHERE steamid = ?";
+        return $this->executeQuery($query, [$steamid])->fetchColumn();
     }
 
-    public function addToCart($steamid, $itemName, $commandsString, $itemImage) {
+    public function updateBalance($steamid, $newBalance)
+    {
+        $query = "UPDATE users SET balance = ? WHERE steamid = ?";
+        return $this->executeQuery($query, [$newBalance, $steamid]);
+    }
+
+    public function addToCart($steamid, $itemName, $commandsString, $itemImage)
+    {
         $query = "INSERT INTO cart (steamid, name, command, image) VALUES (?, ?, ?, ?)";
-        $stmt = $this->conn->prepare($query);
-        $stmt->bind_param("ssss", $steamid, $itemName, $commandsString, $itemImage);
-        return $stmt->execute();
+        return $this->executeQuery($query, [$steamid, $itemName, $commandsString, $itemImage]);
     }
 
-    public function closeConnection() {
-        $this->conn->close();
+
+    public function activatePromocode($promocode, $userid)
+    {
+        $steamid = $userid;
+
+        $userQuery = "SELECT id FROM users WHERE steamid = ?";
+        $userId = $this->executeQuery($userQuery, [$steamid])->fetchColumn();
+
+        if (!$userId) {
+            echo json_encode(['message' => '404 user']);
+            return;
+        }
+
+        if (!$this->checkAuthorization()) {
+            echo json_encode(['message' => 'auth please']);
+            return;
+        }
+
+        $promocodeInfo = $this->getPromocodeInfo($promocode);
+
+        if (!$promocodeInfo) {
+            echo json_encode(['message' => 'promo 404']);
+            return;
+        }
+
+        if ($promocodeInfo['activations_count'] >= $promocodeInfo['max_activations']) {
+            echo json_encode(['message' => 'promo max']);
+            return;
+        }
+
+        $activationCountQuery = "SELECT COUNT(*) AS activation_count FROM user_activations WHERE user_id = ? AND promocode_id = ?";
+        $activationCount = $this->executeQuery($activationCountQuery, [$userId, $promocodeInfo['id']])->fetchColumn();
+
+        if ($activationCount >= $promocodeInfo['max_activations_per_user']) {
+            echo json_encode(['message' => 'promo max activations per user']);
+            return;
+        }
+
+        $insertActivationQuery = "INSERT INTO user_activations (user_id, promocode_id) VALUES (?, ?)";
+        $this->executeQuery($insertActivationQuery, [$userId, $promocodeInfo['id']]);
+
+        $updatePromocodeQuery = "UPDATE promocodes SET activations_count = activations_count + 1 WHERE id = ?";
+        $this->executeQuery($updatePromocodeQuery, [$promocodeInfo['id']]);
+
+        $newBalance = $this->getUserBalance($steamid) + $promocodeInfo['balance'];
+
+        $updateUserBalanceQuery = "UPDATE users SET balance = ? WHERE id = ?";
+        $this->executeQuery($updateUserBalanceQuery, [$newBalance, $userId]);
+
+        echo json_encode(['message' => 'success']);
     }
+
+    private function getPromocodeInfo($promocode)
+    {
+        $query = "SELECT * FROM promocodes WHERE code = ?";
+        return $this->executeQuery($query, [$promocode])->fetch(PDO::FETCH_ASSOC);
+    }
+
+    private function executeQuery($query, $params)
+    {
+        $stmt = $this->db->getConnection()->prepare($query);
+        $stmt->execute($params);
+        return $stmt;
+    }
+
+    public function closeConnection()
+    {
+        $this->db->getConnection()->close();
+    }
+
 // soon may be
 //    public function updateUserData($userData) {
 //        if (!isset($userData['steamid']) || !isset($userData['avatarmedium']) || !isset($userData['personaname'])) {
