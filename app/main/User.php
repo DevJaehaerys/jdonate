@@ -86,9 +86,12 @@ class User
 
     public function addToCart($steamid, $itemName, $commandsString, $itemImage)
     {
+        $commandsString = str_replace('%player%', $steamid, $commandsString);
+
         $query = "INSERT INTO cart (steamid, name, command, image) VALUES (?, ?, ?, ?)";
         return $this->executeQuery($query, [$steamid, $itemName, $commandsString, $itemImage]);
     }
+    
 
 
     public function activatePromocode($promocode, $userid)
@@ -154,43 +157,21 @@ class User
         $stmt->execute($params);
         return $stmt;
     }
-
+    public function getItemPrice($itemId)
+    {
+        $query = "SELECT price FROM shops WHERE id = ?";
+        return $this->executeQuery($query, [$itemId])->fetchColumn();
+    }
+    public function getCommandInfo($itemId)
+    {
+        $query = "SELECT command, name, image FROM shops WHERE id = ?";
+        return $this->executeQuery($query, [$itemId])->fetch(PDO::FETCH_ASSOC);
+    }
+    
+    
     public function closeConnection()
     {
         $this->db->getConnection()->close();
     }
-
-// soon may be
-//    public function updateUserData($userData) {
-//        if (!isset($userData['steamid']) || !isset($userData['avatarmedium']) || !isset($userData['personaname'])) {
-//            return false;
-//        }
-//
-//        $steamid = $userData['steamid'];
-//        $avatar = $userData['avatarmedium'];
-//        $username = $userData['personaname'];
-//
-//        $conn = $this->db->getConnection();
-//        $conn->begin_transaction();
-//
-//        try {
-//            $query = "SELECT * FROM users WHERE steamid = '$steamid' FOR UPDATE";
-//            $result = $conn->query($query);
-//
-//            if ($result->num_rows > 0) {
-//                $query = "UPDATE users SET avatar = '$avatar' WHERE steamid = '$steamid'";
-//                $conn->query($query);
-//            } else {
-//                $query = "INSERT INTO users (steamid, avatar, username) VALUES ('$steamid', '$avatar', '$username')";
-//                $conn->query($query);
-//            }
-//
-//            $conn->commit();
-//            return true;
-//        } catch (Exception $e) {
-//            $conn->rollback();
-//            return false;
-//        }
-//    }
 
 }
