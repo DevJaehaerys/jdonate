@@ -53,3 +53,21 @@ function submitForm() {
             alert('Enter number >= 10')
         });
 }
+document.getElementById('activatePromoButton').addEventListener('click', function() {
+    var promocode = prompt('Promocode:');
+
+    fetch('/app/functions/promo.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+            body: JSON.stringify({ promocode: promocode }),
+    })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message);
+        })
+        .catch(error => {
+            console.error('500');
+        });
+});
