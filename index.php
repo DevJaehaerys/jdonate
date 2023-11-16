@@ -41,8 +41,7 @@ $steamid = htmlspecialchars($_SESSION['userData']['steam_id'] ?? '', ENT_QUOTES,
         <p class="paragraph text-left mb-10 w-96">
             A free automated donation store website for any game with Steam authentication, allowing users to purchase
             items and an API for interaction with the cart. Pure PHP.
-        </p>Под ней добавить
-<script type="text/javascript" src="/></script>
+        </p>
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-4">
             <?php
             require_once 'app/main/ShopCard.php';
